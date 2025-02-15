@@ -4,16 +4,20 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
-	"strconv"
+	"time"
 )
 
 func main() {
 	// prompt user
 	fmt.Println("Exercise 1")
-	fmt.Println("Press enter to begin quiz...")
+	fmt.Println("Press enter to begin quiz. You will have 30 seconds to finish.")
 	// wait for user to hit enter to begin
 	var input string
 	fmt.Scanln(&input)
+
+	// start the 30 second timer
+	duration := 30 * time.Second
+	timer := time.NewTimer(duration)
 
 	// Open Quiz and Read in quiz problems
 	file, err := os.Open("problems.csv")
@@ -29,39 +33,49 @@ func main() {
 		return
 	}
 
-	// create global variable to track the users score
-	var score int
-
 	// run function to map/struct records
 	quiz := makeQuiz(records)
 
-	fmt.Println(quiz)
+	// track score with score variable below
+	var score int
 
-	for qnum, qa := range quiz {
-		fmt.Printf("%s, %s, %s\n", qnum, qa.q, qa.a)
+problemloop:
+	for i, question := range quiz {
 		// ask user question & collect response
-		var response string
-		fmt.Printf("%s: %s\n", qnum, qa.q)
-		fmt.Scan(&response)
+		fmt.Printf("%d: %s\n", i+1, question.q)
+		answerChannel := make(chan string)
 
-		if response == qa.a {
-			score++
+		go func() {
+			var response string
+			fmt.Scan(&response)
+			answerChannel <- response
+		}()
+
+		select {
+		case <-timer.C:
+			fmt.Println("Timer expired!")
+			break problemloop
+		case response := <-answerChannel:
+			if response == question.a {
+				score++
+			}
 		}
 	}
-	// output the score
-	fmt.Printf("Final Score: %d/%d", score, len(quiz))
+	// quiz is over, display the users final score
+	fmt.Printf("Final Score: %d/%d\n", score, len(quiz))
 }
 
-func makeQuiz(records [][]string) map[string]question {
+func makeQuiz(records [][]string) []question {
 	// make a map to store each question and answer
-	quiz := make(map[string]question)
+	quiz := make([]question, len(records))
 
 	// go through each question/answer, adding them to map
 	for i, record := range records {
 		// create the question using the question struct we created
-		question := question{q: record[0], a: record[1]}
-		// add the question to the quiz using the index as the key for the question
-		quiz[strconv.Itoa(i)] = question
+		quiz[i] = question{
+			q: record[0],
+			a: record[1],
+		}
 	}
 	return quiz
 }
@@ -70,11 +84,3 @@ type question struct {
 	q string
 	a string
 }
-
-// create program to read in a quiz (problems.csv)
-//  give quiz to user
-//   track # of questions answered correctly
-//    ask next question regarldess of correctness
-//    at END, display # of correct questions & question amount
-// invalid answers should be considered incorrect
-// NOTE: question may have commas in it
